@@ -1,0 +1,69 @@
+services:
+  init_jwt:
+    image: alpine:latest
+    volumes:
+      - base_reth_jwt:/jwt
+    command: >
+      sh -c "if [ ! -f /jwt/jwt.hex ]; then
+               apk add --no-cache openssl;
+               openssl rand -hex 32 > /jwt/jwt.hex;
+               chmod 644 /jwt/jwt.hex;
+             fi"
+  execution_client:
+    image: ghcr.io/paradigmxyz/op-reth:latest
+    restart: unless-stopped
+    env_file:
+      - .env
+    depends_on:
+      - init_jwt
+    command: >
+      node
+        --chain base
+        --rollup.sequencer-http https://mainnet-sequencer.base.org
+        --http
+        --ws
+        --authrpc.jwtsecret /jwt/jwt.hex
+        --authrpc.port 9551
+        -vvvv
+    ports:
+      - 8545:8545/tcp
+      - 8548:8548/tcp
+      - 9551:9551/tcp
+      - 30305:30305/tcp
+      - 30305:30305/udp
+      - 30306:30306/tcp
+      - 30306:30306/udp
+      - 30303:30303/tcp
+      - 30303:30303/udp
+      - 30301:30301/tcp
+      - 30301:30301/udp
+      - 30313:30313/tcp
+    volumes:
+      - base_reth_jwt:/jwt
+      - base_reth_data:/data
+  rollup_client:
+    image: us-docker.pkg.dev/oplabs-tools-artifacts/images/op-node:latest
+    restart: unless-stopped
+    depends_on:
+      - execution_client
+    command: >
+      op-node
+      --network=base-mainnet
+      --syncmode=execution-layer
+      --l1=wss://eth.merkle.io
+      --l1.trustrpc
+      --l1.beacon=https://ethereum-beacon-api.publicnode.com
+      --l2=http://execution_client:9551
+      --l2.jwt-secret=/jwt/jwt.hex
+      --l2.enginekind=reth
+      --p2p.listen.tcp=9004
+      --p2p.listen.udp=9004
+    ports:
+      - 9004:9004/tcp
+      - 9004:9004/udp
+    volumes:
+      - base_reth_jwt:/jwt:ro
+
+volumes:
+  base_reth_data:
+  base_reth_jwt:
